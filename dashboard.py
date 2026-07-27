@@ -31,36 +31,99 @@ import streamlit as st
 # --------------------------------------------------------------------------- #
 # Configuration de la page
 # --------------------------------------------------------------------------- #
+
+# 1. Configuration de la page en mode Large
 st.set_page_config(
-    page_title="INPPLC - Observatoire Dashboard",
-    page_icon="®©",
+    page_title="Observatoire INPPLC",
     layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-FICHIER_CONSOLIDE = Path("./donnees_consolidees.csv")
-COLONNES_ATTENDUES = [
-    "annee", "index", "indicateur_specifique",
-    "code_iso", "pays", "score", "rang_worldwide",
-]
+# 2. Injection du CSS personnalisé pour l'arrière-plan sombre et les styles
+st.markdown("""
+    <style>
+    /* Force l'arrière-plan général à être sombre et uniforme comme CasaBourse */
+    .stApp {
+        background-color: #121824 !important;
+        color: #ffffff !important;
+    }
+    
+    /* Style pour la grande boîte de titre principale avec dégradé Bleu-Noir */
+    .main-title-box {
+        background: linear-gradient(135deg, #0052d4, #4364f7, #121824);
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        margin-bottom: 25px;
+    }
+    
+    /* Style pour les cartes d'indicateurs individuelles (Dégradés locaux sombres) */
+    .indicator-card-wgi {
+        background: linear-gradient(135deg, #1e293b, #0f172a);
+        border: 1px solid #10b981; /* Bordure verte pour le Contrôle de la corruption */
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+    }
+    
+    .indicator-card-trace {
+        background: linear-gradient(135deg, #2e1045, #0f172a); /* Dégradé Aubergine/Noir */
+        border: 1px solid #a855f7; /* Bordure violette pour TRACE */
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+    }
+    
+    .card-title {
+        font-size: 14px;
+        color: #94a3b8;
+        font-weight: 500;
+        margin-bottom: 8px;
+    }
+    
+    .card-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #ffffff;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# --------------------------------------------------------------------------- #
-# Menu latéral (Sidebar)
-# --------------------------------------------------------------------------- #
-with st.sidebar:
-    try:
-        st.image("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS43Htfi3yHFPO_5nuCXTRJD3z4R_jO4N5IUOYBI9AwYQ&s=10", width=170)
-    except Exception:
-        # Le dashboard ne doit jamais planter pour un simple logo indisponible
-        # (site en maintenance, pas de connexion internet lors de la démo...).
-        st.write("**INPPLC**")
+# =========================================================================
+# 3. EXEMPLE D'AFFICHAGE DU DASHBOARD AVEC LES CAS DES COULEURS
+# =========================================================================
 
-    st.title(" Menu")
-    st.markdown("---")
-    st.info(
-        " **Dashboard de l'Observatoire**\n"
-        "Ce module lit les données consolidées par le pipeline backend "
-        "(`Main.py`)."
-    )
+# --- Header Principal ---
+st.markdown("""
+    <div class="main-title-box">
+        <h1 style="margin:0; color:white; font-size:32px;">L'Observatoire INPPLC</h1>
+        <p style="margin:5px 0 0 0; color:#cbd5e1;">Indice Global : <strong style="color:#38bdf8;">72.5 / 100</strong> | Évolution : <span style="color:#4ade80;">+2.3%</span></p>
+    </div>
+""", unsafe_allow_html=True)
+
+
+# --- Section Indicateurs (Exemple de disposition en colonnes) ---
+st.subheader("📊 Indicateurs Clés de Gouvernance")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Utilisation de notre classe CSS "indicator-card-wgi" pour appliquer le dégradé sombre
+    st.markdown("""
+        <div class="indicator-card-wgi">
+            <div class="card-title">🟢 Contrôle de la Corruption (WGI)</div>
+            <div class="card-value">Score: 68.0 <span style="font-size:16px; color:#4ade80;">(+1.1%)</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    # Utilisation de notre classe CSS "indicator-card-trace" pour l'autre dégradé
+    st.markdown("""
+        <div class="indicator-card-trace">
+            <div class="card-title">🔮 Score TRACE Matrix (Moyen)</div>
+            <div class="card-value">Score: 42 <span style="font-size:16px; color:#94a3b8;">(Risque Stable)</span></div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------- #
 # Titre principal

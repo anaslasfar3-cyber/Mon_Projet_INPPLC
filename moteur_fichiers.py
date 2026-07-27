@@ -74,6 +74,48 @@ def _construire_dataframe_standard(lignes: list[dict]) -> pd.DataFrame:
     df["rang_worldwide"] = pd.to_numeric(df["rang_worldwide"], errors="coerce").astype("Int64")
     return df[COLONNES_STANDARD].dropna(subset=["annee", "code_iso"])
 
+def _lire_feuille_par_entete(
+    chemin_fichier: Path,
+    colonnes_reperes: tuple[str, ...],
+    lignes_max_scan: int = 10,
+) -> Optional[pd.DataFrame]:
+    """
+    Certains fichiers (ex: OBS de l'IBP) placent quelques lignes de titre/notes
+    AVANT la vraie ligne d'en-tête. Plutôt que de coder en dur "header=3", on
+    scanne les premières lignes de chaque feuille pour repérer celle qui
+    contient tous les `colonnes_reperes` (ex: "Country", "ISO", "Year") et on
+    l'utilise comme en-tête réel — quelle que soit la feuille ou l'édition.
+    Retourne None si aucune feuille/ligne ne correspond.
+    """
+    xls = pd.ExcelFile(chemin_fichier)
+    for nom_feuille in xls.sheet_names:
+        brut = pd.read_excel(chemin_fichier, sheet_name=nom_feuille, header=None, nrows=lignes_max_scan)
+        for i, ligne in brut.iterrows():
+            valeurs = set(str(v).strip() for v in ligne if pd.notna(v))
+            if all(repere in valeurs for repere in colonnes_reperes):
+                df = pd.read_excel(chemin_fichier, sheet_name=nom_feuille, header=i)
+                df.columns = [str(c).strip() for c in df.columns]
+                logger.info("En-tête détecté : feuille '%s', ligne %d.", nom_feuille, i)
+                return df
+    return None
+
+
+def apercu_colonnes(chemin_fichier: str | Path, nom_feuille: Optional[str] = None) -> None:
+    """Inspection rapide d'un fichier avant d'écrire/déboguer un loader (ne devine jamais à l'aveugle)."""
+    chemin_fichier = Path(chemin_fichier)
+    if chemin_fichier.suffix.lower() == ".csv":
+        apercu = pd.read_csv(chemin_fichier, encoding="utf-8", nrows=5)
+    else:
+        xls = pd.ExcelFile(chemin_fichier)
+        print(f"Feuilles disponibles dans {chemin_fichier.name} : {xls.sheet_names}")
+        apercu = pd.read_excel(chemin_fichier, sheet_name=(nom_feuille or xls.sheet_names[0]), nrows=5)
+    print(f"\nColonnes de {chemin_fichier.name} :")
+    for col in apercu.columns:
+        print(f"  - {col!r}")
+    print("\nAperçu des 5 premières lignes :")
+    print(apercu)
+
+
 def _charger_indice_generique(
     chemin_fichier: str | Path,
     nom_index: str,
@@ -83,22 +125,25 @@ def _charger_indice_generique(
     termes_annee: list[str] = [],
     termes_rang: list[str] = [],
     annee_defaut: Optional[int] = None,
-    feuille: Optional[str] = None
+    feuille: Optional[str] = None,
+    exclure_zero: bool = True,
+    colonnes_reperes_entete: Optional[tuple[str, ...]] = None,
 ) -> pd.DataFrame:
-    """
-    Fonction générique de regroupement : Parse automatiquement n'importe quel fichier 
-    d'indice en gérant à la fois les formats verticaux et les séries horizontales par année.
-    """
     chemin_fichier = Path(chemin_fichier)
     try:
         if chemin_fichier.suffix.lower() == '.csv':
             df = pd.read_csv(chemin_fichier, encoding='utf-8')
+        elif colonnes_reperes_entete:
+            df = _lire_feuille_par_entete(chemin_fichier, colonnes_reperes_entete)
+            if df is None:
+                logger.error("En-tête introuvable pour %s (repères %s non trouvés dans les 10 premières "
+                              "lignes d'aucune feuille).", nom_index, colonnes_reperes_entete)
+                return pd.DataFrame(columns=COLONNES_STANDARD)
+        elif feuille:
+            df = pd.read_excel(chemin_fichier, sheet_name=feuille)
         else:
-            if feuille:
-                df = pd.read_excel(chemin_fichier, sheet_name=feuille)
-            else:
-                xls = pd.ExcelFile(chemin_fichier)
-                df = pd.read_excel(chemin_fichier, sheet_name=xls.sheet_names[0])
+            xls = pd.ExcelFile(chemin_fichier)
+            df = pd.read_excel(chemin_fichier, sheet_name=xls.sheet_names[0])
     except Exception as e:
         logger.error("Erreur lecture %s : %s", nom_index, e)
         return pd.DataFrame(columns=COLONNES_STANDARD)
@@ -109,6 +154,7 @@ def _charger_indice_generique(
     col_iso = next((c for c in df.columns if c.lower() in ("iso", "iso3", "code_iso", "country code")), None)
     
     if col_pays is None:
+        logger.error("Colonne pays non trouvée pour %s. Colonnes disponibles : %s", nom_index, list(df.columns))
         return pd.DataFrame(columns=COLONNES_STANDARD)
 
     # --- CAS 1 : Format Horizontal (Une colonne brute par Année, ex: '2023') ---
@@ -121,7 +167,8 @@ def _charger_indice_generique(
             if not code_iso: continue
             for col_annee in colonnes_annees:
                 score = pd.to_numeric(row[col_annee], errors="coerce")
-                if pd.isna(score) or score == 0.0: continue
+                if pd.isna(score): continue
+                if exclure_zero and score == 0.0: continue
                 lignes.append({
                     "annee": int(col_annee), "index": nom_index, "indicateur_specifique": ind_specifique,
                     "code_iso": code_iso, "pays": pays, "score": score, "rang_worldwide": None
@@ -134,6 +181,7 @@ def _charger_indice_generique(
     col_rang = next((c for c in df.columns if c.lower() in termes_rang), None)
 
     if col_score is None:
+        logger.error("Colonne score non trouvée pour %s. Colonnes disponibles : %s", nom_index, list(df.columns))
         return pd.DataFrame(columns=COLONNES_STANDARD)
 
     lignes = []
@@ -142,13 +190,17 @@ def _charger_indice_generique(
         code_iso = (col_iso and row.get(col_iso)) or normaliser_iso3(pays)
         if not code_iso: continue
         
+        score = pd.to_numeric(row[col_score], errors="coerce")
+        if pd.isna(score): continue
+        if exclure_zero and score == 0.0: continue
+
         lignes.append({
             "annee": row[col_annee] if col_annee else (annee_defaut or 2026),
             "index": nom_index,
             "indicateur_specifique": ind_specifique,
             "code_iso": code_iso,
             "pays": pays,
-            "score": row[col_score],
+            "score": score,
             "rang_worldwide": row[col_rang] if col_rang else None
         })
     return _construire_dataframe_standard(lignes)
@@ -161,12 +213,12 @@ def _charger_indice_generique(
 def charger_cpi(chemin_fichier: str | Path) -> pd.DataFrame:
     """Parse le Corruption Perceptions Index de Transparency International."""
     return _charger_indice_generique(chemin_fichier, "CPI", "Score Global", 
-                                     ["country", "pays", "country_name", "jurisdiction"], ["score", "cpi_score"], ["year", "annee"])
+                                     ["country", "pays", "country_name", "jurisdiction"], ["score", "cpi_score"], ["year", "annee"], ["rank", "rang", "global rank", "cpi rank"])
 
 def charger_bti(chemin_fichier: str | Path) -> pd.DataFrame:
     """Parse le Bertelsmann Transformation Index."""
     return _charger_indice_generique(chemin_fichier, "BTI", "Transformation Index", 
-                                     ["country", "pays"], ["score", "status"], ["year", "annee"])
+                                     ["country", "pays"], ["score", "status"], ["year", "annee"], ["rank", "rang"])
 
 def charger_wjp(chemin_fichier: str | Path) -> pd.DataFrame:
     """Parse le World Justice Project Rule of Law Index."""
@@ -174,9 +226,18 @@ def charger_wjp(chemin_fichier: str | Path) -> pd.DataFrame:
                                      ["country", "pays"], ["score", "index"], ["year", "annee"], ["rank", "rang"])
 
 def charger_obi(chemin_fichier: str | Path) -> pd.DataFrame:
-    """Parse l'Open Budget Index."""
-    return _charger_indice_generique(chemin_fichier, "OBI", "Transparence Budgétaire", 
-                                     ["country", "country name", "pays"], ["score"], ["year", "annee"])
+    """
+    Parse l'Open Budget Index. Le vrai fichier officiel (OBS_Full_Timeseries)
+    a 3 lignes de titre avant la vraie ligne d'en-tête (Country/ISO/Year) --
+    d'où colonnes_reperes_entete, sans quoi la 1ère ligne de titre est prise
+    à tort comme en-tête. exclure_zero=False : contrairement au CPI, un score
+    de transparence à 0 est une vraie valeur possible, pas une convention
+    "non noté".
+    """
+    return _charger_indice_generique(chemin_fichier, "OBI", "Score de Transparence (OBI)",
+                                     ["country", "country name", "pays"], ["obi", "score"], ["year", "annee"],
+                                     exclure_zero=False,
+                                     colonnes_reperes_entete=("Country", "ISO", "Year"))
 
 def charger_iiag(chemin_fichier: str | Path) -> pd.DataFrame:
     """Parse l'Ibrahim Index of African Governance."""
@@ -192,6 +253,11 @@ def charger_basel(chemin_fichier: str | Path) -> pd.DataFrame:
     """Parse le Basel AML Index (Anti-Money Laundering)."""
     return _charger_indice_generique(chemin_fichier, "BASEL", "Overall AML Score", 
                                      ["country", "pays", "year"], ["score", "overall score"], ["year"], ["ranking", "rank"])
+
+def charger_di(chemin_fichier: str | Path) -> pd.DataFrame:
+    """Parse le Democracy Index (EIU)."""
+    return _charger_indice_generique(chemin_fichier, "DI", "Democracy Index",
+                                     ["country", "pays"], ["score", "index"], ["year", "annee"], ["rank", "rang"])
 
 def charger_gpi(chemin_fichier: str | Path) -> pd.DataFrame:
     """Parse le Global Peace Index."""
@@ -216,8 +282,9 @@ LOADERS: dict[str, Callable[[str | Path], pd.DataFrame]] = {
     "IIAG": charger_iiag,
     "TRACE": charger_trace,
     "BASEL": charger_basel,
+    "DI": charger_di,
     "GPI": charger_gpi,
-    "Freedom": charger_freedom
+    "FIW": charger_freedom  
 }
 
 def charger_tous_les_fichiers(fichiers: dict[str, str | Path]) -> pd.DataFrame:
