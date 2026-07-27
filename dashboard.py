@@ -57,7 +57,7 @@ with st.sidebar:
     st.title(" Menu")
     st.markdown("---")
     st.info(
-        " **Dashboard de l'Observatoire**\n"
+        " **Dashboard **\n"
         "Ce module lit les données consolidées par le pipeline backend "
         "(`Main.py`)."
     )
@@ -65,7 +65,7 @@ with st.sidebar:
 # --------------------------------------------------------------------------- #
 # Titre principal
 # --------------------------------------------------------------------------- #
-st.title(" Tableau de Bord de l'Observatoire — Maroc")
+st.title(" Tableau de Bord — Maroc")
 st.write("Visualisation interactive des indicateurs de gouvernance et de lutte contre la corruption.")
 st.markdown("---")
 
@@ -75,7 +75,6 @@ st.markdown("---")
 if not FICHIER_CONSOLIDE.exists():
     st.error(
         " Fichier de données consolidées manquant ! "
-        "Exécutez d'abord `python Main.py` dans un terminal pour générer la base "
         "(`donnees_consolidees.csv`)."
     )
     st.stop()
