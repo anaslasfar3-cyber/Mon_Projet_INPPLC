@@ -26,6 +26,7 @@ def orchestrer_collecte_globale():
     # =====================================================================
     # ÉTAPE 1 : TÉLÉCHARGEMENT AUTOMATIQUE DES FICHIERS (CPI et BTI)
     # =====================================================================
+    
     print("\n--- ÉTAPE 1 : Lancement du téléchargeur autonome ---")
     fichiers_telecharges = {}
     try:
@@ -38,7 +39,7 @@ def orchestrer_collecte_globale():
     if not fichiers_telecharges:
         print(" Attention : Aucun fichier n'a été téléchargé par le module de scraping.")
         print("Le pipeline va tenter de continuer uniquement avec le moteur API.")
-
+    
     # =====================================================================
     # ÉTAPE 2 : TRAITEMENT ET NORMALISATION DES FICHIERS (Moteur Fichiers)
     # =====================================================================
@@ -85,9 +86,6 @@ def orchestrer_collecte_globale():
         # Fusion des DataFrames de l'API et des fichiers Excel/CSV
         df_global = pd.concat(combinaison, ignore_index=True)
 
-        # Coercion défensive : garantit que .str.upper() ne plante jamais,
-        # même si une source a produit une colonne code_iso mal typée
-        # (ex: uniquement des None -> dtype float au lieu de string).
         df_global["code_iso"] = df_global["code_iso"].astype(str)
 
         # Filtrage strict sur le Maroc (ISO 3 : MAR) pour l'INPPLC
