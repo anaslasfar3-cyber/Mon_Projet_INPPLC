@@ -1,26 +1,3 @@
-"""
-dashboard.py
-============
-Rôle : Interface de visualisation interactive (Streamlit).
-Lit le fichier de données consolidé et l'affiche sous forme de KPIs et graphiques.
-
-Corrections apportées à cette version
---------------------------------------
-1. Le fichier n'existe pas encore -> le message pointait vers "python app.py",
-   qui n'est pas le nom réel de ton orchestrateur (c'est Main.py). Corrigé.
-2. Lecture du CSV : `Main.py` l'écrit en `encoding="utf-8-sig"` (avec BOM).
-   On relit donc explicitement dans le même encodage, pour ne jamais dépendre
-   du comportement par défaut de pandas selon les environnements/versions.
-3. Le logo distant (`st.image(url...)`) plantait tout le dashboard si l'URL
-   était injoignable (site en maintenance, réseau bloqué, etc.) -> protégé
-   par un try/except, avec repli silencieux si l'image ne charge pas.
-4. Ajout d'une vérification de schéma : si le CSV existe mais n'a pas les
-   colonnes attendues (pipeline mal exécuté), un message clair l'indique au
-   lieu d'un KeyError brut illisible pour ton jury.
-5. Le calcul de la variation (delta) plantait si le score de l'année
-   précédente était manquant (NaN) -> protégé.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
